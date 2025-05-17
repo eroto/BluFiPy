@@ -52,8 +52,9 @@ FRAGMENTS =		0x10 # 0001xxxx: there is subsequent data fragment for this frame. 
 # 0x10~0x80 		Reserved
 
 
-
-class BluFiDef:   
+# BlueFiDef class
+# This class is used to define the control and data frames for the BluFi protocol.
+class BluFiDef():   
     Ctrl_Data = SET_NO_SEC_MODE
     FrmCtrl = NOT_ENCRYPTED
 
