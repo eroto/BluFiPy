@@ -45,9 +45,8 @@ class MyDelegate(DefaultDelegate):
 
 	def handleNotification(self, cHandle, data):
 		print("Handling notification...")
-		print("Received notification from handle %d: %s" % (cHandle, data))
-		print("Notification from Handle:0x",format(cHandle,'02x'))
-		print("Value: ",data)
+		print(f"Notification received.Handle:{cHandle}")
+		print(f"Data:{data}")
 
 
 def Get_peripherals_info():
@@ -141,7 +140,7 @@ def checksum(data):
 	print("CRC:",crc)
 	return crc
 
-def set_sec_mode(peripheral, BluFiObj):
+async def set_sec_mode(peripheral, BluFiObj):
 	"""Send security mode data to the peripheral"""
 	print("Send security mode")
 	data_lenght = 0
@@ -158,9 +157,11 @@ def set_sec_mode(peripheral, BluFiObj):
 	srv = peripheral.getServiceByUUID(SERVICE_UUID)
 	charact = srv.getCharacteristics(CHAR_UUID_W)[0]
 	charact.write(data_to_send,withResponse)
+	
+	await Peripheral_Response(peripheral)
 
 
-def send_data(peripheral, BluFiObj, data = 0x00):
+async def send_data(peripheral, BluFiObj, data = 0x00):
 	"""Send serial data to the peripheral"""
 	print("Send serial data to the peripheral")
 	CRC = bytearray(2)
@@ -201,7 +202,10 @@ def send_data(peripheral, BluFiObj, data = 0x00):
 	charact = srv.getCharacteristics(CHAR_UUID_W)[0]
 	charact.write(data_to_send,withResponse)
 
-def send_data_fix(peripheral, data, withResponse):
+	#asyncio wait for the response from the handlenotification
+	await Peripheral_Response(peripheral)
+
+async def send_data_fix(peripheral, data, withResponse):
 	"""Send serial data to the peripheral"""
 	print("Send serial data to the peripheral")
 
@@ -214,17 +218,8 @@ def send_data_fix(peripheral, data, withResponse):
 	charact.write(formated_data_to_send,withResponse)
 
 	#wait for response
-	'''
-	if withResponse:
-		print("Waiting for response...")
-		while True:
-			if peripheral.waitForNotifications(1.0):
-				print("Waiting for notification..")
-				continue
-			else:
-				print("Notification received")
-				break
-				'''
+	#asyncio wait for the response from the handlenotification
+	await Peripheral_Response(peripheral)
 
 def crc_test(data):
 	"""Send serial data to the peripheral"""
@@ -259,7 +254,19 @@ def crc_test(data):
 	print("Data to send:",bytearray(data_to_send))
 
 
-def main():
+async def Peripheral_Response(peripheral):
+	"""Wait for the response from the peripheral"""
+	print("Waiting for response...")
+	# Wait for notification
+	while True:
+		if peripheral.waitForNotifications(1):
+			break
+		else:
+			print("waiting for notification")
+			
+
+
+async def main():
 
 	loop = True
 	BlueFiObj = BluFiDef()
@@ -274,26 +281,21 @@ def main():
 	data =  [0x41,0x42,0x43,0x44,0x45]
 	data3 =  bytes(b'HOLA')
 
-	#print("Send Data fix")
-	#send_data_fix(HoCoSys_peripheral,data0,True)
+
 
 	print("SET_CHKSUM_ONLY, NOT_ENCRYPTED")
 	BlueFiObj.SetMsgValues(SET_CHKSUM_ONLY, NOT_ENCRYPTED)
-	#BlueFiObj.Ctrl_Data = SET_CHKSUM_ONLY
-	#BlueFiObj.FrmCtrl = NOT_ENCRYPTED
-	set_sec_mode(HoCoSys_peripheral,BlueFiObj)
+	await set_sec_mode(HoCoSys_peripheral,BlueFiObj)
 
-	#BlueFiObj.Ctrl_Data = BluFiDef.CUSTOM_DATA
-	#BlueFiObj.FrmCtrl = BluFiDef.NOT_ENCRYPTED
 	print("CUSTOM_DATA + CHKSUM")
 	BlueFiObj.SetMsgValues(CUSTOM_DATA, CHKSUM)
-	send_data(HoCoSys_peripheral,BlueFiObj,data3) 
+	await send_data(HoCoSys_peripheral,BlueFiObj,data3) 
 
 	print("GET_VERSION")
 	BlueFiObj.Ctrl_Data = GET_VERSION
-	send_data(HoCoSys_peripheral,BlueFiObj)
+	await send_data(HoCoSys_peripheral,BlueFiObj)
 
-#	send_data_fix(HoCoSys_peripheral,data2,True)
+
 
 	serv = HoCoSys_peripheral.getServiceByUUID(SERVICE_UUID)
 	R_char = serv.getCharacteristics(CHAR_UUID_R)[0]
@@ -302,15 +304,6 @@ def main():
 	print("val:",val)
 
 	while loop:
-
-		while True:
-			if HoCoSys_peripheral.waitForNotifications(1.0):
-				print("Waiting for notification..")
-				continue
-			else:
-				print("Notification received")
-				break
-
 		usrInput = input("Enter text to send:")
 
 		if(usrInput == ".exit"):
@@ -322,30 +315,17 @@ def main():
 		elif (usrInput == ".version"):
 			BlueFiObj.Ctrl_Data = GET_VERSION
 			BlueFiObj.FrmCtrl = NOT_ENCRYPTED
-			send_data(HoCoSys_peripheral,BlueFiObj)
+			await send_data(HoCoSys_peripheral,BlueFiObj)
 
 		else:
 			data = bytes(usrInput,'utf-8')
 			BlueFiObj.Ctrl_Data = CUSTOM_DATA
 			BlueFiObj.FrmCtrl = CHKSUM
-			send_data(HoCoSys_peripheral,BlueFiObj,data)
+			await send_data(HoCoSys_peripheral,BlueFiObj,data)
 			'''crc_test(data)'''
 
 	disconnect_from_peripheral(HoCoSys_peripheral)
 
 
-#BlueFiPeripheral =  Peripheral(deviceAddress="f4:12:fa:88:20:ce",addrType=ADDR_TYPE_PUBLIC, iface=0)
-#scanner = bluepy.btle.Scanner()
-#devices = scanner.scan(timeout=10)
-#print ("Devices:",devices)
-
-#dev = bluepy.btle.Peripheral(devices[0].addr)
-
-#characteristic = dev.getCharacteristics(uuid="0000ffff-0000-1000-8000-00805f9b34fb")[0]
-#data = characteristic.read()
-#print("Read data:", data)
-#characteristic.write(b"hello world")#python 3.11
-
-
 if __name__ == "__main__":
-	main()
+	asyncio.run(main())

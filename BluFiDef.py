@@ -42,13 +42,13 @@ SET_RSSI_WIFI_CON   = 0x59	#Set the RSSI at Wi-Fi connection end.
 
 #F R A M E   C O N T R O L
 #COMMAND                BIT
-NOT_ENCRYPTED =		0x00 # 00000000 : Not encrypted, no checksum
+NOT_ENCRYPTED =	    0x00 # 00000000 : Not encrypted, no checksum
 ENCRYPTED = 		0x01 # 00000001 : Encreypted, no checksum
-CHKSUM =		0x02 # 00000010 : Checksum, not encryted
+CHKSUM =		    0x02 # 00000010 : Checksum, not encryted
 ENC_CHKSUM =		0x03 # 00000011 : encryted and checksum
 ESP_T0_MOB =	 	0x04 # 000001xx : from ESP --> MOBILE. / 000000xx Means from ESP <-- MOBILE
-ACK_REQ =		0x08 # 00000xxx : not required to reply to an ACK. / 00001xxx: ACK is required
-FRAGMENTS =		0x10 # 0001xxxx: there is subsequent data fragment for this frame. /0000xxxx: no subsequent data fragment
+ACK_REQ =           0x08 # 00000xxx : not required to reply to an ACK. / 00001xxx: ACK is required
+FRAGMENTS =         0x10 # 0001xxxx: there is subsequent data fragment for this frame. /0000xxxx: no subsequent data fragment
 # 0x10~0x80 		Reserved
 
 
