@@ -1,4 +1,25 @@
-#BluFiDef.py
+#!/home/enrique/venv/bin/python3
+#{{ ESP Blufi implementation }}
+#Copyright (C) {{ 2024 }}  {{ Enrique Rodriguez Toscano }}
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+import time
+
+##############
+# TYPE Field #
+##############
 #C O N T R O L   F R A M E S
 ACKNOLEDGE	        = 0x00	#Acknowledge
 SET_NO_SEC_MODE 	= 0x04	#Set the ESP device security mode, Checksum:NO  Encryption:NO
@@ -8,7 +29,7 @@ SET_CHKSYM_ENC		= 0x34	#Set the ESP device security mode, Checksum:YES Encryptio
 
 SET_WIFI_MODE	= 0x08	#Set the op mode of WIFI
 CONN_TO_AP	    = 0x0C	#Connect ESP to AP
-DISC_FROM_AP	= 0x10	#Disconnect ESP from AP0;63;50M0;63;50m
+DISC_FROM_AP	= 0x10	#Disconnect ESP from AP
 GET_WIFI_INFO	= 0x14	#Get information of the ESP WIFI Mode and status
 DISC_SOFTAP	    = 0x18	#Disconnect ESP from the SoftAP (in SoftAp Mode)
 GET_VERSION	    = 0x1C	#Get version information
@@ -40,6 +61,9 @@ SET_MAX_RECON_TIME  = 0x51	#Set the maximum Wi-Fi reconnecting time.
 SET_WIFI_END_RSN    = 0x55	#Set the Wi-Fi connection end reason.
 SET_RSSI_WIFI_CON   = 0x59	#Set the RSSI at Wi-Fi connection end.
 
+#######################
+# Frame Control Field #
+#######################
 #F R A M E   C O N T R O L
 #COMMAND                BIT
 NOT_ENCRYPTED =	    0x00 # 00000000 : Not encrypted, no checksum
@@ -50,6 +74,12 @@ ESP_T0_MOB =	 	0x04 # 000001xx : from ESP --> MOBILE. / 000000xx Means from ESP 
 ACK_REQ =           0x08 # 00000xxx : not required to reply to an ACK. / 00001xxx: ACK is required
 FRAGMENTS =         0x10 # 0001xxxx: there is subsequent data fragment for this frame. /0000xxxx: no subsequent data fragment
 # 0x10~0x80 		Reserved
+
+
+CRC_LENGTH = 2
+NOTIFICATION_TIMEOUT = 3.5
+MAX_TIMEOUTS = 10
+MAX_CHUNK_SIZE = 14
 
 
 # BlueFiDef class
@@ -69,3 +99,46 @@ class BluFiDef():
         self.Ctrl_Data = val1
         self.FrmCtrl = val2
 
+#Counter class
+#The class is used to counte the messages sequence number
+class Counter:
+    count = 0
+    def __init__(self):
+        self.count = 0
+
+    def get_count(self):
+        return self.count
+
+    def inc_count(self):
+        self.count += 1
+        print(f"Counter incremented to->{self.count}")
+        return self.count
+
+
+class AckTracker:
+    def __init__(self):
+        self.pending_acks = {}  # seq_num: timestamp
+        self.received_acks = set()  # confirmed seq_nums
+
+    def mark_sent(self, seq_num: int):
+        """Register a frame that expects an ACK."""
+        self.pending_acks[seq_num] = time.time()
+
+    def confirm_ack(self, acked_seq: int):
+        """Mark a frame as acknowledged."""
+        if acked_seq in self.pending_acks:
+            del self.pending_acks[acked_seq]
+            self.received_acks.add(acked_seq)
+            print(f"✅ ACK confirmed for frame #{acked_seq}")
+        else:
+            print(f"⚠️ Received unexpected ACK for #{acked_seq}")
+
+    def get_missing_acks(self, timeout: float = 2.0):
+        """Return list of seq numbers not yet acknowledged within timeout (seconds)."""
+        now = time.time()
+        return [seq for seq, ts in self.pending_acks.items() if (now - ts) > timeout]
+
+    def reset(self):
+        """Clear tracker state (start of new session)."""
+        self.pending_acks.clear()
+        self.received_acks.clear()
