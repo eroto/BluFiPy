@@ -145,11 +145,25 @@ class MyDelegate(DefaultDelegate):
 
 
 def GenDHParams():
-	# Generate DH parameters (generator=2, key size=256 bits)
+	# Generate DH parameters (generator=2, key size=512 bits)
 	parameters = dh.generate_parameters(generator=2, key_size=512, backend=default_backend())
 	# Generate private key
 	private_key = parameters.generate_private_key()
-	# Get public key in DER format (send this to ESP32)
+
+	# Export private key to PEM
+	private_key_pem = private_key.private_bytes(
+		encoding=serialization.Encoding.PEM,
+		format=serialization.PrivateFormat.PKCS8,
+		encryption_algorithm=serialization.NoEncryption()
+		)
+
+	# Export parameters to PEM
+	parameters_pem = parameters.parameter_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.ParameterFormat.PKCS3
+		)
+
+	# Export public key in DER format (to send to ESP32)
 	public_key_bytes = private_key.public_key().public_bytes(
 		encoding=serialization.Encoding.DER,
         format=serialization.PublicFormat.SubjectPublicKeyInfo
@@ -160,7 +174,10 @@ def GenDHParams():
 	return{
 		'parameters': parameters,
 		'private_key': private_key,
+		'private_key_pem': private_key_pem,
+		'parameters_pem': parameters_pem,
         'public_key_bytes': public_key_bytes
+
 	}
 	
 def Prepare_WiFi_Data(wifi_data: str) -> bytes:
@@ -203,30 +220,44 @@ def ComputeSharedKey(private_key, esp_payload):
 
 
 
-def save_dh_keys(private_key, public_key_bytes, folder="dh_keys"):
-    os.makedirs(folder, exist_ok=True)
+def save_dh_keys(parameters, private_key, public_key_bytes, folder="dh_keys"):
+	os.makedirs(folder, exist_ok=True)
 
-    # Save public key (DER)
-    with open(os.path.join(folder, "dh_public_key.der"), "wb") as pub_file:
-        pub_file.write(public_key_bytes)
+	# Save public key (DER)
+	with open(os.path.join(folder, "dh_public_key.der"), "wb") as pub_file:
+		pub_file.write(public_key_bytes)
+		
+	# Save DH parameters (p, g) in PEM
+	param_bytes = parameters.parameter_bytes(
+		encoding=serialization.Encoding.PEM,
+		format=serialization.ParameterFormat.PKCS3
+		)
+	with open(os.path.join(folder, "dh_parameters.pem"), "wb") as param_file:
+		param_file.write(param_bytes)
 
-    # Save private key (PEM)
-    private_bytes = private_key.private_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.PKCS8,
-        encryption_algorithm=serialization.NoEncryption()
-    )
-    with open(os.path.join(folder, "dh_private_key.pem"), "wb") as priv_file:
-        priv_file.write(private_bytes)
 
-    print("✅ DH keys saved to folder:", folder)
+	# Save private key (PEM, PCKCS8 format)
+	private_bytes = private_key.private_bytes(
+		encoding=serialization.Encoding.PEM,
+		format=serialization.PrivateFormat.PKCS8,
+		encryption_algorithm=serialization.NoEncryption()
+		)
+	with open(os.path.join(folder, "dh_private_key.pem"), "wb") as priv_file:
+		priv_file.write(private_bytes)
+
+	print("✅ DH parameters, public & private keys saved to folder:", folder)
 
 def load_dh_keys(folder="dh_keys"):
+	#load Dh Parameters
+	with open(os.path.join(folder, "dh_parameters.pem"), "rb") as param_file:
+		params = serialization.load_pem_parameters(param_file.read(), backend=default_backend())
+
+	
 	# Load private key
 	with open(os.path.join(folder, "dh_private_key.pem"), "rb") as priv_file:
 		private_key = serialization.load_pem_private_key(priv_file.read(),password=None,backend=default_backend())
 		#Ger parameters from private key
-		params = private_key.parameters()
+		#params = private_key.parameters()
 
     	# Regenerate public key from private key
 		public_key_bytes = private_key.public_key().public_bytes(encoding=serialization.Encoding.DER,format=serialization.PublicFormat.SubjectPublicKeyInfo)
@@ -234,10 +265,10 @@ def load_dh_keys(folder="dh_keys"):
 	print("✅ DH keys loaded from folder:", folder)
 	
 	return {
-        'private_key': private_key,
-        'public_key_bytes': public_key_bytes,
+		'private_key': private_key,
+		'public_key_bytes': public_key_bytes,
 		'parameters': params
-	}
+		}
 
 
 def Get_peripherals_info():
@@ -632,7 +663,7 @@ def parse_ack_frame(frame: bytes) -> int | None:
 async def send_neg_data(peripheral, BlueFiObj):
 	print(f"Start Negotiation Data, sending Pub Key to ESP32")
 	BlueFiObj.Ctrl_Data = SND_NEG_DATA
-	BlueFiObj.FrmCtrl = CHKSUM
+	BlueFiObj.FrmCtrl = 0x1C#NOT_ENCRYPTED|CHKSUM
 	#print PubKey in hex
 	PubKey = DH_Param['public_key_bytes']
 	len(PubKey) # Get the length of the public key
@@ -745,13 +776,13 @@ async def main():
 
 
 if __name__ == "__main__":
-	if not os.path.exists("dh_keys") and not os.path.exists("dh_keys/dh_private_key.pem"):
+	if not os.path.exists("dh_keys") or not os.path.exists("dh_keys/dh_private_key.pem"):
 		print("Generating new DH parameters...")
 		DH_Param = GenDHParams()
 		if not DH_Param:
 			print("Error generating DH parameters")
 			sys.exit(1)
-		save_dh_keys(DH_Param['private_key'], DH_Param['public_key_bytes'])
+		save_dh_keys(DH_Param['parameters'], DH_Param['private_key'], DH_Param['public_key_bytes'])
 		print("DH parameters generated and saved")
 	else:
 		print("Loading existing DH parameters...")
